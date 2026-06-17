@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FactoryAI - لوحة المدير</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #0f1923;
+            --card-color: #162030;
+            --accent-color: #f59e0b;
+            --success-color: #10b981;
+            --danger-color: #ef4444;
+            --text-color: #e2e8f0;
+            --text-muted: #94a3b8;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: var(--bg-color); color: var(--text-color); padding: 20px; }
+        
+        .container { width: 100%; max-width: 1200px; margin: 0 auto; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 1px solid rgba(245, 158, 11, 0.2); padding-bottom: 15px; flex-wrap: wrap; gap: 15px; }
+        .header h2 { color: var(--accent-color); font-size: 1.6rem; }
+        .logout-btn { background: none; border: 1px solid var(--danger-color); color: var(--danger-color); padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 0.9rem; }
+        .logout-btn:hover { background-color: rgba(239, 68, 68, 0.1); }
+
+        /* الفلاتر */
+        .filters-bar { background-color: var(--card-color); padding: 15px 20px; border-radius: 8px; margin-bottom: 25px; display: flex; gap: 20px; flex-wrap: wrap; align-items: center; border: 1px solid rgba(226, 232, 240, 0.05); }
+        .filter-group { display: flex; align-items: center; gap: 10px; }
+        .filter-group label { font-size: 0.9rem; color: var(--text-muted); }
+        select { padding: 8px 16px; background-color: var(--bg-color); border: 1px solid rgba(226, 232, 240, 0.1); border-radius: 4px; color: #fff; cursor: pointer; }
+
+        /* كروت الإحصائيات */
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-bottom: 25px; }
+        .stat-card { background-color: var(--card-color); padding: 20px; border-radius: 8px; border-right: 4px solid var(--accent-color); }
+        .stat-card.production { border-right-color: var(--success-color); }
+        .stat-card.downtime { border-right-color: var(--danger-color); }
+        .stat-card p { font-size: 0.9rem; color: var(--text-muted); margin-bottom: 5px; }
+        .stat-card h3 { font-size: 1.8rem; color: #fff; }
+
+        /* قسم الذكاء الاصطناعي */
+        .ai-section { background: linear-gradient(135deg, #162030 0%, #1e293b 100%); padding: 20px; border-radius: 8px; margin-bottom: 25px; border: 1px solid rgba(245, 158, 11, 0.2); }
+        .ai-title { color: var(--accent-color); font-weight: bold; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+        .ai-content { font-size: 0.95rem; line-height: 1.6; }
+
+        /* الجداول */
+        .table-section { background-color: var(--card-color); padding: 20px; border-radius: 8px; margin-bottom: 25px; overflow-x: auto; }
+        .table-header-flex { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .excel-btn { background-color: var(--success-color); color: white; border: none; padding: 10px 20px; border-radius: 6px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+        .excel-btn:hover { opacity: 0.9; }
+        
+        table { width: 100%; border-collapse: collapse; text-align: right; min-width: 700px; }
+        th, td { padding: 12px 15px; border-bottom: 1px solid rgba(226, 232, 240, 0.05); }
+        th { color: var(--accent-color); font-size: 0.9rem; background-color: rgba(15, 25, 35, 0.4); }
+        td { font-size: 0.95rem; }
+
+        /* الدعم الفني */
+        .support-section { background-color: var(--card-color); padding: 20px; border-radius: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        @media(max-width: 768px) { .support-section { grid-template-columns: 1fr; } }
+        textarea { width: 100%; padding: 12px; background-color: var(--bg-color); border: 1px solid rgba(226, 232, 240, 0.1); border-radius: 6px; color: #fff; resize: none; margin-bottom: 10px; }
+        .support-btn { background-color: var(--accent-color); color: #0f1923; border: none; padding: 10px 20px; border-radius: 6px; font-weight: bold; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="header">
+            <div>
+                <h2 id="factoryTitle">لوحة تحكم الإدارة العامة</h2>
+                <p style="font-size: 0.85rem; color: var(--text-muted);" id="factorySector">قطاع المصنع</p>
+            </div>
+            <button class="logout-btn" onclick="logout()">خروج ↩</button>
+        </div>
+
+        <div class="filters-bar">
+            <div class="filter-group">
+                <label>نطاق الوقت:</label>
+                <select id="timeFilter" onchange="fetchDashboardData()">
+                    <option value="today">اليوم الحالي</option>
+                    <option value="week" selected>هذا الأسبوع</option>
+                    <option value="month">هذا الشهر</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>الوردية:</label>
+                <select id="shiftFilter" onchange="fetchDashboardData()">
+                    <option value="all">كل الورديات مجتمعة</option>
+                    <option value="A">وردية A - صباح</option>
+                    <option value="B">وردية B - مساء</option>
+                    <option value="C">وردية C - ليل</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card production">
+                <p>إجمالي الكمية المنتجة</p>
+                <h3 id="statTotalProd">0</h3>
+            </div>
+            <div class="stat-card downtime">
+                <p>إجمالي وقت التوقف (دقيقة)</p>
+                <h3 id="statTotalDown">0</h3>
+            </div>
+            <div class="stat-card">
+                <p>عدد الورديات المسجلة</p>
+                <h3 id="statShiftCount">0</h3>
+            </div>
+        </div>
+
+        <div class="ai-section">
+            <div class="ai-title">✨ تحليل الـ AI الاستباقي (مؤقت)</div>
+            <div class="ai-content" id="aiBox">
+                جاري مراجعة وتحليل بيانات الورديات لآخر 7 أيام عبر الذكاء الاصطناعي...
+            </div>
+        </div>
+
+        <div class="table-section">
+            <div class="table-header-flex">
+                <h3 style="color: #fff;">سجل بيانات الورديات التفصيلي</h3>
+                <button class="excel-btn" onclick="exportToExcel()">تحميل بياناتي 📥</button>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>التاريخ</th>
+                        <th>الوردية</th>
+                        <th>الكمية المنتجة</th>
+                        <th>وقت التوقف (د)</th>
+                        <th>نوع العطل</th>
+                        <th>قراءات الماكينة وملاحظات</th>
+                    </tr>
+                </thead>
+                <tbody id="shiftsTableBody">
+                    <tr>
+                        <td colspan="6" style="text-align: center; color: var(--text-muted);">لا توجد بيانات مسجلة مطابقة للفلاتر الحالية.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="support-section">
+            <div>
+                <h3 style="margin-bottom: 10px; color: #fff;">طلب دعم فني سريع</h3>
+                <textarea id="supportMsg" rows="3" placeholder="اكتب مشكلتك أو طلبك هنا ليصل إلى مسؤول النظام مباشرة..."></textarea>
+                <button class="support-btn" onclick="sendSupportMessage()">إرسال الطلب ✉️</button>
+            </div>
+            <div>
+                <h3 style="margin-bottom: 10px; color: #fff;">حالة الطلبات السابقة</h3>
+                <div id="supportStatusList" style="font-size: 0.9rem; color: var(--text-muted); max-height: 120px; overflow-y: auto;">
+                    لا يوجد طلبات دعم سابقة.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // إعداد الاتصال بالـ Supabase
+        const SUPABASE_URL = 'https://vzrdxgkupahhlpnznwqt.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ6cmR4Z2t1cGFoaGxwbnpud3F0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1OTk3NjUsImV4cCI6MjA5NzE3NTc2NX0.0yI-pGTM5GEOQ6aj0JH3eqlBm3ZjXqAXIKpyZmdnX6M';
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        const factoryId = localStorage.getItem('factory_id');
+        const factoryName = localStorage.getItem('factory_name');
+        const userRole = localStorage.getItem('user_role');
+
+        // حماية الصفحة
+        if (!factoryId || userRole !== 'MANAGER') {
+            alert('عذراً، غير مسموح لك بالدخول. يرجى تسجيل الدخول أولاً كمدير.');
+            window.location.href = 'index.html';
+        }
+
+        document.getElementById('factoryTitle').innerText = `لوحة تحكم إدارة: ${factoryName}`;
+        
+        let allFetchedShifts = []; // لتخزين البيانات محلياً للفلترة السريعة والتصدير
+
+        window.onload = async function() {
+            await fetchFactoryInfo();
+            await fetchDashboardData();
+            await fetchSupportMessages();
+        };
+
+        async function fetchFactoryInfo() {
+            const { data } = await supabase.from('factories').select('sector').eq('id', factoryId).single();
+            if (data) document.getElementById('factorySector').innerText = `قطاع الإنتاج: ${data.sector}`;
+        }
+
+        async function fetchDashboardData() {
+            const timeFilter = document.getElementById('timeFilter').value;
+            const shiftFilter = document.getElementById('shiftFilter').value;
+            
+            let query = supabase.from('shifts').select('*').eq('factory_id', factoryId).order('date', { ascending: false });
+
+            // تطبيق فلاتر نطاق الوقت
+            const todayStr = new Date().toISOString().split('T')[0];
+            if (timeFilter === 'today') {
+                query = query.eq('date', todayStr);
+            } else if (timeFilter === 'week') {
+                let oneWeekAgo = new Date();
+                oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+                query = query.gte('date', oneWeekAgo.toISOString().split('T')[0]);
+            } else if (timeFilter === 'month') {
+                let oneMonthAgo = new Date();
+                oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+                query = query.gte('date', oneMonthAgo.toISOString().split('T')[0]);
+            }
+
+            // تطبيق فلتر الوردية إذا كان محدداً
+            if (shiftFilter !== 'all') {
+                query = query.eq('shift_name', shiftFilter);
+            }
+
+            const { data, error } = await query;
+            if (error) { console.error(error); return; }
+
+            allFetchedShifts = data || [];
+            renderDashboard(allFetchedShifts);
+        }
+
+        function renderDashboard(shifts) {
+            let totalProd = 0;
+            let totalDown = 0;
+            const tbody = document.getElementById('shiftsTableBody');
+            tbody.innerHTML = '';
+
+            if (shifts.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">لا توجد بيانات مسجلة لهذه الفلاتر.</td></tr>`;
+                document.getElementById('statTotalProd').innerText = '0';
+                document.getElementById('statTotalDown').innerText = '0';
+                document.getElementById('statShiftCount').innerText = '0';
+                return;
+            }
+
+            shifts.forEach(s => {
+                totalProd += s.production_qty;
+                totalDown += s.downtime_minutes;
+
+                // تحويل قراءات الـ JSON لنص مقروء
+                let readingsStr = "";
+                if(s.machine_readings) {
+                    readingsStr = Object.entries(s.machine_readings)
+                        .map(([k, v]) => `${k}: ${v ?? 'لا يوجد'}`)
+                        .join(' | ');
+                }
+
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${s.date}</td>
+                    <td style="font-weight:bold; color:var(--accent-color)">وردية ${s.shift_name}</td>
+                    <td>${s.production_qty.toLocaleString()}</td>
+                    <td style="color:${s.downtime_minutes > 0 ? 'var(--danger-color)' : '#fff'}">${s.downtime_minutes}</td>
+                    <td>${s.downtime_type || '-'}</td>
+                    <td style="font-size:0.85rem; color:var(--text-muted)">${readingsStr} <br> <span style="color:#fff">${s.notes || ''}</span></td>
+                `;
+                tbody.appendChild(row);
+            });
+
+            document.getElementById('statTotalProd').innerText = totalProd.toLocaleString();
+            document.getElementById('statTotalDown').innerText = totalDown.toLocaleString();
+            document.getElementById('statShiftCount').innerText = shifts.length;
+
+            // كود محاكاة استباقي للـ AI لحين تشغيل الكود الفعلي لاحقاً
+            generateLocalAiSummary(shifts);
+        }
+
+        function generateLocalAiSummary(shifts) {
+            if (shifts.length === 0) return;
+            // حساب أكثر سبب عطل تكراراً
+            const counts = {};
+            shifts.forEach(s => { if(s.downtime_minutes > 0) counts[s.downtime_type] = (counts[s.downtime_type] || 0) + 1; });
+            const topReason = Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b, "لا يوجد أعطال متكررة");
+
+            document.getElementById('aiBox').innerHTML = `
+                🔹 <b>أكثر سبب توقف تكراراً:</b> ${topReason}<br>
+                🔹 <b>التوصية الفورية:</b> يُنصح بجدولة فحص صيانة وقائية استباقية للحد من هدر الوقت الفعلي وتحسين الكفاءة التشغيلية.
+            `;
+        }
+
+        // ==========================================
+        // مـحـرك تـصـديـر الـ EXCEL الـمـتـقـدم (4 شيتات منفصلة)
+        // ==========================================
+        async function exportToExcel() {
+            if (allFetchedShifts.length === 0) {
+                alert('لا توجد بيانات حالية لتصديرها إلى ملف Excel.');
+                return;
+            }
+
+            // مصفوفة أسماء الأيام بالعربية للمساعدة
+            const daysOfWeek = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+
+            // دالة مساعدة لتجهيز شكل السطور والصفوف لكل شيت بدقة
+            function mapToExcelRows(shiftsData) {
+                return shiftsData.map(s => {
+                    const dateObj = new Date(s.date);
+                    const dayName = isNaN(dateObj.getDay()) ? '-' : daysOfWeek[dateObj.getDay()];
+                    
+                    // دمج القراءات لعمود الماكينة
+                    let readingsStr = "";
+                    if(s.machine_readings) {
+                        readingsStr = Object.entries(s.machine_readings).map(([k, v]) => `${k}:${v}`).join(' | ');
+                    }
+
+                    return {
+                        "التاريخ": s.date,
+                        "اليوم": dayName,
+                        "وقت بداية الوردية (تلقائي)": s.time_start || '-',
+                        "الكمية المنتجة": s.production_qty,
+                        "وقت التوقف (دقيقة)": s.downtime_minutes,
+                        "وقت حدوث العطل (تلقائي)": s.downtime_time || '-',
+                        "نوع العطل": s.downtime_type || '-',
+                        "قراءات الماكينة": readingsStr,
+                        "الرطوبة %": s.humidity || '-',
+                        "الملاحظات": s.notes || ''
+                    };
+                });
+            }
+
+            // 1. إنشاء كتاب عمل جديد فارغ (Workbook)
+            const wb = XLSX.utils.book_new();
+
+            // 2. تصفية وبناء البيانات للشيتات الأربعة بالتتابع
+            const dataAll = mapToExcelRows(allFetchedShifts);
+            const dataA = mapToExcelRows(allFetchedShifts.filter(s => s.shift_name === 'A'));
+            const dataB = mapToExcelRows(allFetchedShifts.filter(s => s.shift_name === 'B'));
+            const dataC = mapToExcelRows(allFetchedShifts.filter(s => s.shift_name === 'C'));
+
+            // 3. تحويل المصفوفات لشيتات متوافقة مع المكتبة
+            const wsAll = XLSX.utils.json_to_sheet(dataAll);
+            const wsA = XLSX.utils.json_to_sheet(dataA);
+            const wsB = XLSX.utils.json_to_sheet(dataB);
+            const wsC = XLSX.utils.json_to_sheet(dataC);
+
+            // 4. دمج وتسمية الشيتات داخل ملف الإكسيل الواحد بالترتيب المطلوب
+            XLSX.utils.book_append_sheet(wb, wsAll, "الكل");
+            XLSX.utils.book_append_sheet(wb, wsA, "وردية A");
+            XLSX.utils.book_append_sheet(wb, wsB, "وردية B");
+            XLSX.utils.book_append_sheet(wb, wsC, "وردية C");
+
+            // 5. حفظ وتحميل الملف تلقائياً للكمبيوتر أو الجوال باسم ديناميكي نظيف
+            const cleanDate = new Date().toISOString().split('T')[0];
+            XLSX.writeFile(wb, `FactoryAI_${factoryName}_${cleanDate}.xlsx`);
+        }
+
+        // إرسال رسائل دعم للأدمن
+        async function sendSupportMessage() {
+            const msgInput = document.getElementById('supportMsg');
+            const msg = msgInput.value.trim();
+            if(!msg) return;
+
+            const { error } = await supabase.from('support_msgs').insert([{ factory_id: factoryId, message: msg }]);
+            if (error) { alert('فشل الإرسال'); return; }
+
+            msgInput.value = '';
+            alert('تم إرسال طلب الدعم للمسؤول بنجاح! ✅');
+            await fetchSupportMessages();
+        }
+
+        async function fetchSupportMessages() {
+            const { data } = await supabase.from('support_msgs').select('*').eq('factory_id', factoryId).order('created_at', { ascending: false });
+            const listContainer = document.getElementById('supportStatusList');
+            if (data && data.length > 0) {
+                listContainer.innerHTML = data.map(m => `
+                    <div style="margin-bottom:8px; border-bottom:1px solid rgba(226,232,240,0.05); padding-bottom:5px;">
+                        <b>الرسالة:</b> ${m.message} <br>
+                        <span style="color:${m.status === 'open' ? 'var(--accent-color)' : 'var(--success-color)'}">[${m.status === 'open' ? 'قيد الانتظار' : 'تم الرد'}]</span> 
+                        ${m.reply ? `<b>الرد:</b> ${m.reply}` : ''}
+                    </div>
+                `).join('');
+            }
+        }
+
+        function logout() { localStorage.clear(); window.location.href = 'index.html'; }
+    </script>
+</body>
+</html>
